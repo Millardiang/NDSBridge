@@ -1,0 +1,29 @@
+Building NSD Bridge from source
+===============================
+
+Needs Go 1.22+ and a C compiler (SQLite is compiled in via cgo).
+
+On Windows with Go and MSYS2/mingw-w64 (gcc) installed:
+    go build -ldflags "-s -w" -o nsdbridge.exe .
+    go build -ldflags "-s -w -H windowsgui" -o nsdbridgew.exe .
+
+Cross-compiling from Linux (as the release was built):
+    CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC=x86_64-w64-mingw32-gcc \
+      go build -trimpath -ldflags "-s -w -extldflags=-static" -o nsdbridge.exe .
+    (add -H windowsgui for nsdbridgew.exe; GOARCH=386 CC=i686-w64-mingw32-gcc
+    for 32-bit)
+
+Tests:  go test ./...   (the export test runs nxutil.exe through Wine on Linux)
+
+Files
+  main.go       commands, supervisor (restarts the worker), check/export/simulate
+  ipc*.go       NexStorm shared-memory readers (Windows), file stand-in elsewhere
+  parse.go      strike / storm message decoding
+  engine.go     counters, rates, day/month/year rollover, periodic jobs
+  store.go      NSD.sqlite (NSBackend's schema)
+  outputs.go    NSD text file and monthly report formats
+  csvlog.go     daily CSV files
+  export.go     nxutil wrapper and built-in .nex reader
+  delivery.go   mirror folder + FTP (ftp.go)
+  status.go     status page / read-only file server
+  sys_*.go      scheduled task install, hidden child processes
