@@ -3,6 +3,21 @@
 All notable changes to NSD Bridge are listed here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions use [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-11-02
+
+### Changed
+- The `strikes` list in `NSDRealtime.json` now covers the whole current day (since local midnight) instead of the last 60 minutes. Its count matches `strikes_today`, and it survives restarts.
+- In the JSON, `strikes_window_min` is replaced by `strikes_window` (`"today"` or `"N min"`), `strikes_since` and `strikes_since_utc`.
+- The strike list is written one strike per line, which keeps a full day's file compact.
+- The database keeps today's strikes, not just the last hour.
+
+### Added
+- `realtime_json_window` setting: `today` (default) or a number of minutes.
+- `realtime_json_max_strikes` setting: the most strikes to list, keeping the newest (default `0`, no limit).
+
+### Unchanged
+- `NSDStrikes.txt`, `NSDStrikes20sec.txt` and `strikes_last_hour` still use the `persistence` window, as NSDisplay expects.
+
 ## [1.2.1] - 2026-11-02
 
 ### Fixed
@@ -78,6 +93,7 @@ First release. Replaces NSBackend 2.12 and NSList 1.4.
 - Days with no strikes being reported as failed exports by nxutil.
 - Monthly totals in the report for a finished month: they are now worked out from that month's daily rows.
 
+[1.3.0]: #130---2026-11-02
 [1.2.1]: #121---2026-11-02
 [1.2.0]: #120---2026-11-02
 [1.1.0]: #110---2026-11-02

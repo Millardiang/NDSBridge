@@ -1,11 +1,11 @@
-# NSD Bridge 1.2.1
+# NSD Bridge 1.3.0
 
 **NexStorm / Boltek lightning data logger for modern Windows**
 
 NSD Bridge replaces the 2013 NSD backend (`NSBackend.exe` + `NSList.exe`) with a single program. It reads the live strike and storm data that NexStorm publishes, and writes:
 
 - **The same NSD files as before**, byte-for-byte compatible: `NSDRealtime.txt`, `NSDStrikes.txt`, `NSDStrikes20sec.txt`, `NSDStorms.txt`, `NSDOldStorms.txt`, `NSDGraph.txt`, `NSDRaw.txt` and `reports\NSDReportMMYYYY.txt`, plus the same `NSD.sqlite` database, so your year-to-date counters carry on.
-- **`NSDRealtime.json`**: the realtime data as JSON, with field names, plus every strike from the last hour with its latitude/longitude.
+- **`NSDRealtime.json`**: the realtime data as JSON, with field names, plus every strike so far today with its latitude/longitude.
 - **The NSList daily CSV** (`csv\LYYYYMMDD.csv`), the same file NSList's "Log CSV file" option produced.
 - **A fuller daily CSV** with a header row (`csv\strikes_YYYY-MM-DD.csv`).
 - **CSV exports of NexStorm's archive files** (`exports\nex_YYYY-MM-DD.csv`), made with `nxutil.exe` or a built-in reader.
@@ -126,7 +126,9 @@ Settings are in `nsdbridge.ini` next to the program. It is created on first run,
 | `nsd_files` | `true` | Write the NSD text files |
 | `realtime_json` | `true` | Also write `NSDRealtime.json` |
 | `station_lat`, `station_lon` | *(empty)* | Your detector's position in decimal degrees (north and east positive, e.g. `51.4545` and `-2.5879`). Needed for strike coordinates. |
-| `realtime_json_strikes` | `true` | Include the list of recent strikes in `NSDRealtime.json` |
+| `realtime_json_strikes` | `true` | Include a list of strikes in `NSDRealtime.json` |
+| `realtime_json_window` | `today` | Which strikes to list: `today` (since local midnight) or a number of minutes, e.g. `60` |
+| `realtime_json_max_strikes` | `0` | The most strikes to list, keeping the newest (`0` = no limit) |
 | `distance_unit` | `km` | `km` or `mi`: the units NexStorm reports distances in. Used only to work out strike coordinates. |
 | `nscrop` | `2000` | Maximum strikes in `NSDStrikes.txt` |
 | `persistence` | `60` | Minutes of strikes kept in `NSDStrikes.txt` |
@@ -167,7 +169,7 @@ This file holds the same values as `NSDRealtime.txt`, in the same order. The dif
 - numbers are real JSON numbers, not text;
 - two UTC times are added: `time_utc` and `last_strike_time_utc`;
 - the last strike's position is added: `last_strike_lat` and `last_strike_lon`;
-- the station position is included, along with a `strikes` list of every strike in the last `persistence` minutes (60 by default). This is the same set of strikes as `NSDStrikes.txt`: newest first, at most `nscrop`.
+- the station position is included, along with a `strikes` list of every strike so far today (since local midnight, newest first). Its count matches `strikes_today`.
 
 Switch it off with `realtime_json=false`.
 
@@ -202,19 +204,13 @@ Switch it off with `realtime_json=false`.
   "persistence_min": 60,
   "max_strikes_in_file": 5000,
   "station": { "lat": 51.4545, "lon": -2.5879, "distance_unit": "km" },
-  "strikes_window_min": 60,
-  "strikes_count": 64,
+  "strikes_window": "today",
+  "strikes_since": 1793145600,
+  "strikes_since_utc": "2026-10-28T00:00:00Z",
+  "strikes_count": 102,
   "strikes": [
-    {
-      "timestamp": 1793180213,
-      "time_utc": "2026-10-28T09:36:53Z",
-      "direction": 183,
-      "bearing": 183.4,
-      "distance": 261,
-      "type": "cc+",
-      "lat": 49.1112,
-      "lon": -2.8005
-    }
+    {"timestamp":1793180213,"time_utc":"2026-10-28T09:36:53Z","direction":183,"bearing":183.4,"distance":261,"type":"cc+","lat":49.1112,"lon":-2.8005},
+    ...
   ]
 }
 ```
@@ -230,9 +226,11 @@ Each entry in `strikes` has these fields:
 | `type` | `cg+`, `cg-`, `cc+` or `cc-` |
 | `lat`, `lon` | Calculated strike position (`null` if no station position is set) |
 
-The list is written as `[]` when there have been no strikes in the window. Switch the list off with `realtime_json_strikes=false`.
+The list starts empty (`[]`) at midnight and grows through the day. Because today's strikes are kept in the database, the list survives restarts. `strikes_last_hour` and `NSDStrikes.txt` still cover the last `persistence` minutes, as NSDisplay expects.
 
-With many strikes the file gets larger: about 200 bytes per strike, so roughly 1 MB at the 5,000-strike limit. Lower `nscrop` if that is too much to fetch every 10 seconds.
+To list only the last N minutes instead, set `realtime_json_window=N`. Switch the list off with `realtime_json_strikes=false`.
+
+Each strike takes about 150 bytes, so a busy day of 20,000 strikes makes a file of about 3 MB, rewritten every 10 seconds. If that is too much, set `realtime_json_max_strikes` to keep only the newest strikes.
 
 If no strike has been received since start-up, `last_strike_type` is `null`.
 

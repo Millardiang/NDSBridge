@@ -351,7 +351,7 @@ func TestRealtimeJSONStrikes(t *testing.T) {
 	}
 	b := fmtRealtimeJSON(&Realtime{Now: 1793612216, Persistence: 60}, rows, cfg)
 	var m struct {
-		Window  int            `json:"strikes_window_min"`
+		Window  string         `json:"strikes_window"`
 		Count   int            `json:"strikes_count"`
 		Station map[string]any `json:"station"`
 		Strikes []JSONStrike   `json:"strikes"`
@@ -359,7 +359,7 @@ func TestRealtimeJSONStrikes(t *testing.T) {
 	if err := json.Unmarshal(b, &m); err != nil {
 		t.Fatal(err)
 	}
-	if m.Window != 60 || m.Count != 2 || len(m.Strikes) != 2 || m.Station["lat"] != 51.4545 {
+	if m.Window != "today" || m.Count != 2 || len(m.Strikes) != 2 || m.Station["lat"] != 51.4545 {
 		t.Fatalf("%s", b)
 	}
 	if *m.Strikes[0].Lat != 49.3726 || *m.Strikes[0].Bearing != 216.4 || m.Strikes[0].TimeUTC != "2026-11-02T09:36:55Z" {
@@ -370,12 +370,12 @@ func TestRealtimeJSONStrikes(t *testing.T) {
 	}
 	// empty list is [] not missing
 	b = fmtRealtimeJSON(&Realtime{Persistence: 60}, nil, cfg)
-	if !strings.Contains(string(b), `"strikes": []`) {
+	if !strings.Contains(string(b), `"strikes": []`) || !json.Valid(b) {
 		t.Fatalf("%s", b)
 	}
 	// switched off
 	cfg.RealtimeJSONStrikes = false
-	if strings.Contains(string(fmtRealtimeJSON(&Realtime{}, rows, cfg)), "strikes_window_min") {
+	if strings.Contains(string(fmtRealtimeJSON(&Realtime{}, rows, cfg)), "strikes_window") {
 		t.Fatal("list should be omitted")
 	}
 }
@@ -441,5 +441,59 @@ func TestRestartRestoresRecent(t *testing.T) {
 	}
 	if math.Abs(e2.lastPos[0]-e.lastPos[0]) > 1e-9 {
 		t.Fatalf("position changed %v %v", e.lastPos, e2.lastPos)
+	}
+}
+
+func TestJSONTodayWindow(t *testing.T) {
+	dir := t.TempDir()
+	cfg := defaultConfig(dir)
+	cfg.validate()
+	st, err := OpenStore(filepath.Join(dir, "data", "NSD.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	e := NewEngine(cfg, st, NewDelivery(cfg), &ipcHealth{})
+	e.Load()
+	now := time.Now()
+	y, mo, d := now.Date()
+	mid := time.Date(y, mo, d, 0, 0, 0, 0, time.Local)
+	// one strike yesterday, one just after midnight, one now
+	st.InsertStrikes([]StrikeRow{{TS: mid.Unix() - 30, Dir: 1, Dist: 1, Type: "cg+"}, {TS: mid.Unix() + 5, Dir: 2, Dist: 2, Type: "cg-"}, {TS: now.Unix() - 1, Dir: 3, Dist: 3, Type: "cc+"}})
+	e.writeStrikeFiles(now, 0)
+	b, err := os.ReadFile(filepath.Join(dir, "data", "NSDRealtime.json"))
+	if err != nil || !json.Valid(b) {
+		t.Fatalf("%v %s", err, b)
+	}
+	var m struct {
+		Window  string       `json:"strikes_window"`
+		Since   int64        `json:"strikes_since"`
+		Count   int          `json:"strikes_count"`
+		Strikes []JSONStrike `json:"strikes"`
+	}
+	json.Unmarshal(b, &m)
+	want := 2
+	if now.Unix()-1 < mid.Unix()+5 { // test run in the first seconds after midnight
+		want = 1
+	}
+	if m.Window != "today" || m.Since != mid.Unix() || m.Count != want || m.Strikes[0].Direction != 3 {
+		t.Fatalf("%s", b)
+	}
+	// housekeeping must keep today's strikes even past the 60 min persistence
+	e.housekeeping(now)
+	rows, _ := st.RecentStrikes(mid.Unix()-1, 100)
+	if len(rows) != want {
+		t.Fatalf("housekeeping removed today's strikes: %d", len(rows))
+	}
+	// NSDStrikes.txt still uses the 60 min window
+	txt, _ := os.ReadFile(filepath.Join(dir, "data", "NSDStrikes.txt"))
+	if strings.Count(string(txt), "\n") != 1 || !strings.Contains(string(txt), ",3,3,cc+,") {
+		t.Fatalf("NSDStrikes.txt: %q", txt)
+	}
+	// minutes window
+	cfg.RealtimeJSONWindow = "30"
+	cfg.validate()
+	if e.jsonSince(now) != now.Unix()-1800 {
+		t.Fatal("minutes window")
 	}
 }

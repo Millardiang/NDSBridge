@@ -405,8 +405,29 @@ func (e *Engine) writeStrikeFiles(now time.Time, rate int) {
 	}
 	e.out("NSDRealtime.txt", fmtRealtime(rt))
 	if e.cfg.RealtimeJSON {
-		e.out("NSDRealtime.json", fmtRealtimeJSON(rt, rows, e.cfg))
+		var list []StrikeRow
+		if e.cfg.RealtimeJSONStrikes {
+			rt.Since = e.jsonSince(now)
+			limit := e.cfg.RealtimeJSONMax
+			if limit <= 0 {
+				limit = 10000000
+			}
+			if list, err = e.store.RecentStrikes(rt.Since-1, limit); err != nil {
+				warnEvery("db-read", 5*time.Minute, "reading strikes for JSON: %v", err)
+			}
+		}
+		e.out("NSDRealtime.json", fmtRealtimeJSON(rt, list, e.cfg))
 	}
+}
+
+// jsonSince is the start of the JSON strike list: local midnight, or N
+// minutes ago if realtime_json_window is a number.
+func (e *Engine) jsonSince(now time.Time) int64 {
+	if e.cfg.jsonWindowMin > 0 {
+		return now.Unix() - int64(e.cfg.jsonWindowMin*60)
+	}
+	y, m, d := now.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.Local).Unix()
 }
 
 func (e *Engine) flushStorms(now time.Time) {
@@ -534,7 +555,14 @@ func (e *Engine) report(month time.Time) ([]byte, error) {
 
 func (e *Engine) housekeeping(now time.Time) {
 	nowU := now.Unix()
-	if err := e.store.Housekeeping(nowU-int64(e.cfg.Persistence*60)-600, nowU-86400-600, nowU-90*86400, nowU-300); err != nil {
+	// keep strikes for NSDStrikes.txt and for the JSON list
+	keep := nowU - int64(e.cfg.Persistence*60) - 600
+	if e.cfg.RealtimeJSON && e.cfg.RealtimeJSONStrikes {
+		if s := e.jsonSince(now) - 600; s < keep {
+			keep = s
+		}
+	}
+	if err := e.store.Housekeeping(keep, nowU-86400-600, nowU-90*86400, nowU-300); err != nil {
 		warnf("database housekeeping: %v", err)
 	}
 	if e.cfg.NSDFiles {

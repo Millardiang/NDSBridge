@@ -51,6 +51,7 @@ type Realtime struct {
 	LastDir, LastDist          string
 	LastType                   string
 	LastPos                    *[2]float64
+	Since                      int64 // start of the JSON strike list
 	LastHour, Day, Month, Year int
 	MaxRate                    int
 	MaxRateTime                string
@@ -205,19 +206,48 @@ func fmtRealtimeJSON(r *Realtime, rows []StrikeRow, cfg *Config) []byte {
 		Persistence  int    `json:"persistence_min"`
 		Crop         int    `json:"max_strikes_in_file"`
 		Station      any    `json:"station,omitempty"`
-		Window       any    `json:"strikes_window_min,omitempty"`
+		Window       any    `json:"strikes_window,omitempty"`
+		Since        any    `json:"strikes_since,omitempty"`
+		SinceUTC     any    `json:"strikes_since_utc,omitempty"`
 		Count        any    `json:"strikes_count,omitempty"`
-		Strikes      any    `json:"strikes,omitempty"`
 	}{r.Now, iso(r.Now), r.Rate, r.CloseRate, 50, r.LastStrike, iso(r.LastStrike), num(r.LastDir), num(r.LastDist), lastType, lat, lon,
 		r.LastHour, r.Day, r.Month, r.Year, r.MaxRate, r.MaxRateTime, r.MaxBurst, r.MaxBurstTime,
-		r.CGP, r.CGN, r.CCP, r.CCN, r.Uptime, r.Measure, r.Persistence, r.Crop, nil, nil, nil, nil}
+		r.CGP, r.CGN, r.CCP, r.CCN, r.Uptime, r.Measure, r.Persistence, r.Crop, nil, nil, nil, nil, nil}
 	if cfg != nil && cfg.hasPos {
 		m.Station = map[string]any{"lat": cfg.lat, "lon": cfg.lon, "distance_unit": cfg.DistUnit}
 	}
-	if cfg != nil && cfg.RealtimeJSONStrikes {
-		list := strikeList(rows, cfg)
-		m.Window, m.Count, m.Strikes = r.Persistence, len(list), list // never nil, so an empty list is written as []
+	var list []JSONStrike
+	withList := cfg != nil && cfg.RealtimeJSONStrikes
+	if withList {
+		list = strikeList(rows, cfg)
+		m.Window, m.Count = "today", len(list)
+		if cfg.jsonWindowMin > 0 {
+			m.Window = fmt.Sprintf("%d min", cfg.jsonWindowMin)
+		}
+		if r.Since > 0 {
+			m.Since, m.SinceUTC = r.Since, iso(r.Since)
+		}
 	}
 	b, _ := json.MarshalIndent(m, "", "  ")
-	return append(b, '\r', '\n')
+	if !withList {
+		return append(b, '\r', '\n')
+	}
+	// "strikes" goes last, one strike per line: a full day can hold
+	// thousands of strikes and this keeps the file compact but readable.
+	var sb strings.Builder
+	sb.Write(b[:len(b)-2]) // drop "\n}"
+	sb.WriteString(",\n  \"strikes\": [")
+	for i, s := range list {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		line, _ := json.Marshal(s)
+		sb.WriteString("\n    ")
+		sb.Write(line)
+	}
+	if len(list) > 0 {
+		sb.WriteString("\n  ")
+	}
+	sb.WriteString("]\n}\r\n")
+	return []byte(sb.String())
 }

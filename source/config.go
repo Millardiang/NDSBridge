@@ -32,6 +32,9 @@ type Config struct {
 	WriteEvery          int    `ini:"write_interval_sec"`
 	RealtimeJSON        bool   `ini:"realtime_json"`
 	RealtimeJSONStrikes bool   `ini:"realtime_json_strikes"`
+	RealtimeJSONWindow  string `ini:"realtime_json_window"`
+	RealtimeJSONMax     int    `ini:"realtime_json_max_strikes"`
+	jsonWindowMin       int    // 0 = today
 	StationLat          string `ini:"station_lat"`
 	StationLon          string `ini:"station_lon"`
 	DistUnit            string `ini:"distance_unit"`
@@ -91,6 +94,7 @@ func defaultConfig(base string) *Config {
 		WriteEvery:          10,
 		RealtimeJSON:        true,
 		RealtimeJSONStrikes: true,
+		RealtimeJSONWindow:  "today",
 		DistUnit:            "km",
 		CSVExtended:         true,
 		CSVNSList:           true,
@@ -193,6 +197,8 @@ func (c *Config) apply(m map[string]string) []string {
 	num("write_interval_sec", &c.WriteEvery)
 	boo("realtime_json", &c.RealtimeJSON)
 	boo("realtime_json_strikes", &c.RealtimeJSONStrikes)
+	str("realtime_json_window", &c.RealtimeJSONWindow)
+	num("realtime_json_max_strikes", &c.RealtimeJSONMax)
 	str("station_lat", &c.StationLat)
 	str("station_lon", &c.StationLon)
 	str("distance_unit", &c.DistUnit)
@@ -250,6 +256,23 @@ func (c *Config) validate() []string {
 	if c.FTPActive && c.FTPServer == "" {
 		p = append(p, "ftpactive is on but no server is set; FTP disabled")
 		c.FTPActive = false
+	}
+	c.RealtimeJSONWindow = strings.ToLower(strings.TrimSpace(c.RealtimeJSONWindow))
+	c.jsonWindowMin = 0
+	if c.RealtimeJSONWindow != "today" && c.RealtimeJSONWindow != "" {
+		n, err := strconv.Atoi(c.RealtimeJSONWindow)
+		if err != nil || n < 1 || n > 1440 {
+			p = append(p, "realtime_json_window must be today or 1-1440 minutes (using today)")
+			c.RealtimeJSONWindow = "today"
+		} else {
+			c.jsonWindowMin = n
+		}
+	}
+	if c.RealtimeJSONWindow == "" {
+		c.RealtimeJSONWindow = "today"
+	}
+	if c.RealtimeJSONMax < 0 {
+		c.RealtimeJSONMax = 0
 	}
 	c.DistUnit = strings.ToLower(strings.TrimSpace(c.DistUnit))
 	if c.DistUnit != "km" && c.DistUnit != "mi" {
@@ -339,8 +362,12 @@ func (c *Config) render() string {
 	w("write_interval_sec=%d", c.WriteEvery)
 	w("; also write NSDRealtime.json (same data as NSDRealtime.txt, with named fields)")
 	w("realtime_json=%s", b2s(c.RealtimeJSON))
-	w("; include the strikes from the last 'persistence' minutes (up to nscrop) in the JSON")
+	w("; include a list of strikes (with coordinates) in the JSON")
 	w("realtime_json_strikes=%s", b2s(c.RealtimeJSONStrikes))
+	w("; which strikes: today (since local midnight) or a number of minutes, e.g. 60")
+	w("realtime_json_window=%s", c.RealtimeJSONWindow)
+	w("; most strikes to list, newest kept (0 = no limit)")
+	w("realtime_json_max_strikes=%d", c.RealtimeJSONMax)
 	w("; your detector's position in decimal degrees (north and east positive), used to")
 	w("; work out each strike's latitude/longitude. Leave blank to switch this off.")
 	w("station_lat=%s", c.StationLat)
