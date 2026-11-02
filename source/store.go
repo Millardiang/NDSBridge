@@ -76,6 +76,28 @@ func openStore(path string) (*Store, error) {
 			return nil, fmt.Errorf("%s: %v", q, err)
 		}
 	}
+	// Columns added by NSD Bridge 1.2 (NSBackend never reads the database
+	// directly, and ignores extra columns).
+	have := map[string]bool{}
+	if rows, err := db.Query("PRAGMA table_info(strikes)"); err == nil {
+		for rows.Next() {
+			var cid, notnull, pk int
+			var name, typ string
+			var def any
+			if rows.Scan(&cid, &name, &typ, &notnull, &def, &pk) == nil {
+				have[name] = true
+			}
+		}
+		rows.Close()
+	}
+	for _, col := range []string{"bearing", "lat", "lon"} {
+		if !have[col] {
+			if _, err := db.Exec("ALTER TABLE strikes ADD COLUMN " + col + " REAL"); err != nil {
+				db.Close()
+				return nil, fmt.Errorf("adding column %s: %v", col, err)
+			}
+		}
+	}
 	s := &Store{db: db, path: path}
 	for _, n := range []string{"daily", "monthly", "yearly"} {
 		var c int
@@ -274,6 +296,8 @@ type StrikeRow struct {
 	Dir, Dist int
 	Corr      int
 	Type      string
+	Bearing   *float64 // exact true bearing (0.1 deg); nil for rows written by NSBackend
+	Lat, Lon  *float64 // calculated strike position; nil if no station position
 }
 
 func (s *Store) InsertStrikes(batch []StrikeRow) error {
@@ -285,13 +309,13 @@ func (s *Store) InsertStrikes(batch []StrikeRow) error {
 		return err
 	}
 	defer tx.Rollback()
-	st, err := tx.Prepare("INSERT INTO strikes (timestamp, dir, dist, corr, strtype) VALUES (?,?,?,?,?)")
+	st, err := tx.Prepare("INSERT INTO strikes (timestamp, dir, dist, corr, strtype, bearing, lat, lon) VALUES (?,?,?,?,?,?,?,?)")
 	if err != nil {
 		return err
 	}
 	defer st.Close()
 	for _, r := range batch {
-		if _, err := st.Exec(r.TS, r.Dir, r.Dist, r.Corr, r.Type); err != nil {
+		if _, err := st.Exec(r.TS, r.Dir, r.Dist, r.Corr, r.Type, r.Bearing, r.Lat, r.Lon); err != nil {
 			return err
 		}
 	}
@@ -299,7 +323,7 @@ func (s *Store) InsertStrikes(batch []StrikeRow) error {
 }
 
 func (s *Store) RecentStrikes(since int64, limit int) ([]StrikeRow, error) {
-	rows, err := s.db.Query("SELECT timestamp, dir, dist, corr, strtype FROM strikes WHERE timestamp > ? ORDER BY timestamp DESC LIMIT ?", since, limit)
+	rows, err := s.db.Query("SELECT timestamp, dir, dist, corr, strtype, bearing, lat, lon FROM strikes WHERE timestamp > ? ORDER BY timestamp DESC LIMIT ?", since, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -309,10 +333,18 @@ func (s *Store) RecentStrikes(since int64, limit int) ([]StrikeRow, error) {
 		var r StrikeRow
 		var v [4]sql.NullInt64
 		var t sql.NullString
-		if err := rows.Scan(&v[0], &v[1], &v[2], &v[3], &t); err != nil {
+		var f [3]sql.NullFloat64
+		if err := rows.Scan(&v[0], &v[1], &v[2], &v[3], &t, &f[0], &f[1], &f[2]); err != nil {
 			return nil, err
 		}
 		r.TS, r.Dir, r.Dist, r.Corr, r.Type = v[0].Int64, int(v[1].Int64), int(v[2].Int64), int(v[3].Int64), t.String
+		nf := func(x sql.NullFloat64) *float64 {
+			if !x.Valid {
+				return nil
+			}
+			return &x.Float64
+		}
+		r.Bearing, r.Lat, r.Lon = nf(f[0]), nf(f[1]), nf(f[2])
 		out = append(out, r)
 	}
 	return out, rows.Err()

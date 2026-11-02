@@ -116,7 +116,44 @@ func fmtReport(month time.Time, days []*DayStats, monthly, yearly Counter) []byt
 
 // NSDRealtime.json: the same values as NSDRealtime.txt, with names, proper
 // numbers and ISO 8601 times added alongside the unix timestamps.
-func fmtRealtimeJSON(r *Realtime) []byte {
+// JSONStrike is one entry of the "strikes" list in NSDRealtime.json.
+type JSONStrike struct {
+	Timestamp int64    `json:"timestamp"`
+	TimeUTC   string   `json:"time_utc"`
+	Direction int      `json:"direction"`
+	Bearing   *float64 `json:"bearing"`
+	Distance  int      `json:"distance"`
+	Type      string   `json:"type"`
+	Lat       *float64 `json:"lat"`
+	Lon       *float64 `json:"lon"`
+}
+
+// strikeList builds the JSON list from NSDStrikes rows (newest first).
+// Strikes stored by NSBackend have no exact bearing or position, so these
+// are filled in from the whole-degree direction when a station is set.
+func strikeList(rows []StrikeRow, cfg *Config) []JSONStrike {
+	out := make([]JSONStrike, 0, len(rows))
+	for _, s := range rows {
+		j := JSONStrike{Timestamp: s.TS, TimeUTC: time.Unix(s.TS, 0).UTC().Format(time.RFC3339),
+			Direction: s.Dir, Bearing: s.Bearing, Distance: s.Dist, Type: s.Type, Lat: s.Lat, Lon: s.Lon}
+		if j.Bearing == nil {
+			b := float64(s.Dir)
+			j.Bearing = &b
+		}
+		if j.Lat == nil && cfg != nil && cfg.hasPos {
+			km := float64(s.Dist)
+			if cfg.DistUnit == "mi" {
+				km *= 1.609344
+			}
+			la, lo := destination(cfg.lat, cfg.lon, *j.Bearing, km)
+			j.Lat, j.Lon = &la, &lo
+		}
+		out = append(out, j)
+	}
+	return out
+}
+
+func fmtRealtimeJSON(r *Realtime, rows []StrikeRow, cfg *Config) []byte {
 	iso := func(ts int64) any {
 		if ts <= 0 {
 			return nil
@@ -167,9 +204,20 @@ func fmtRealtimeJSON(r *Realtime) []byte {
 		Measure      string `json:"measure"`
 		Persistence  int    `json:"persistence_min"`
 		Crop         int    `json:"max_strikes_in_file"`
+		Station      any    `json:"station,omitempty"`
+		Window       any    `json:"strikes_window_min,omitempty"`
+		Count        any    `json:"strikes_count,omitempty"`
+		Strikes      any    `json:"strikes,omitempty"`
 	}{r.Now, iso(r.Now), r.Rate, r.CloseRate, 50, r.LastStrike, iso(r.LastStrike), num(r.LastDir), num(r.LastDist), lastType, lat, lon,
 		r.LastHour, r.Day, r.Month, r.Year, r.MaxRate, r.MaxRateTime, r.MaxBurst, r.MaxBurstTime,
-		r.CGP, r.CGN, r.CCP, r.CCN, r.Uptime, r.Measure, r.Persistence, r.Crop}
+		r.CGP, r.CGN, r.CCP, r.CCN, r.Uptime, r.Measure, r.Persistence, r.Crop, nil, nil, nil, nil}
+	if cfg != nil && cfg.hasPos {
+		m.Station = map[string]any{"lat": cfg.lat, "lon": cfg.lon, "distance_unit": cfg.DistUnit}
+	}
+	if cfg != nil && cfg.RealtimeJSONStrikes {
+		list := strikeList(rows, cfg)
+		m.Window, m.Count, m.Strikes = r.Persistence, len(list), list // never nil, so an empty list is written as []
+	}
 	b, _ := json.MarshalIndent(m, "", "  ")
 	return append(b, '\r', '\n')
 }

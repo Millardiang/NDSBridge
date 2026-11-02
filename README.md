@@ -1,11 +1,11 @@
-# NSD Bridge 1.1.0
+# NSD Bridge 1.2.0
 
 **NexStorm / Boltek lightning data logger for modern Windows**
 
 NSD Bridge replaces the 2013 NSD backend (`NSBackend.exe` + `NSList.exe`) with a single program. It reads the live strike and storm data that NexStorm publishes, and writes:
 
 - **The same NSD files as before**, byte-for-byte compatible: `NSDRealtime.txt`, `NSDStrikes.txt`, `NSDStrikes20sec.txt`, `NSDStorms.txt`, `NSDOldStorms.txt`, `NSDGraph.txt`, `NSDRaw.txt` and `reports\NSDReportMMYYYY.txt`, plus the same `NSD.sqlite` database, so your year-to-date counters carry on.
-- **`NSDRealtime.json`**: the realtime data as JSON, with field names and the latitude/longitude of the last strike.
+- **`NSDRealtime.json`**: the realtime data as JSON, with field names, plus every strike from the last hour with its latitude/longitude.
 - **The NSList daily CSV** (`csv\LYYYYMMDD.csv`), the same file NSList's "Log CSV file" option produced.
 - **A fuller daily CSV** with a header row (`csv\strikes_YYYY-MM-DD.csv`).
 - **CSV exports of NexStorm's archive files** (`exports\nex_YYYY-MM-DD.csv`), made with `nxutil.exe` or a built-in reader.
@@ -125,6 +125,7 @@ Settings are in `nsdbridge.ini` next to the program. It is created on first run,
 | `nsd_files` | `true` | Write the NSD text files |
 | `realtime_json` | `true` | Also write `NSDRealtime.json` |
 | `station_lat`, `station_lon` | *(empty)* | Your detector's position in decimal degrees (north and east positive, e.g. `51.4545` and `-2.5879`). Needed for strike coordinates. |
+| `realtime_json_strikes` | `true` | Include the list of recent strikes in `NSDRealtime.json` |
 | `distance_unit` | `km` | `km` or `mi`: the units NexStorm reports distances in. Used only to work out strike coordinates. |
 | `nscrop` | `2000` | Maximum strikes in `NSDStrikes.txt` |
 | `persistence` | `60` | Minutes of strikes kept in `NSDStrikes.txt` |
@@ -164,7 +165,8 @@ This file holds the same values as `NSDRealtime.txt`, in the same order. The dif
 - each value has a name;
 - numbers are real JSON numbers, not text;
 - two UTC times are added: `time_utc` and `last_strike_time_utc`;
-- the last strike's position is added: `last_strike_lat` and `last_strike_lon`.
+- the last strike's position is added: `last_strike_lat` and `last_strike_lon`;
+- the station position is included, along with a `strikes` list of every strike in the last `persistence` minutes (60 by default). This is the same set of strikes as `NSDStrikes.txt`: newest first, at most `nscrop`.
 
 Switch it off with `realtime_json=false`.
 
@@ -197,9 +199,39 @@ Switch it off with `realtime_json=false`.
   "uptime": "0 days 0 hours 0 min",
   "measure": "km",
   "persistence_min": 60,
-  "max_strikes_in_file": 5000
+  "max_strikes_in_file": 5000,
+  "station": { "lat": 51.4545, "lon": -2.5879, "distance_unit": "km" },
+  "strikes_window_min": 60,
+  "strikes_count": 64,
+  "strikes": [
+    {
+      "timestamp": 1793180213,
+      "time_utc": "2026-10-28T09:36:53Z",
+      "direction": 183,
+      "bearing": 183.4,
+      "distance": 261,
+      "type": "cc+",
+      "lat": 49.1112,
+      "lon": -2.8005
+    }
+  ]
 }
 ```
+
+Each entry in `strikes` has these fields:
+
+| Field | Meaning |
+|---|---|
+| `timestamp`, `time_utc` | When the strike was received |
+| `direction` | Whole degrees, as in `NSDStrikes.txt` |
+| `bearing` | Degrees at NexStorm's 0.1° resolution, with the TRAC alignment applied |
+| `distance` | As reported by NexStorm |
+| `type` | `cg+`, `cg-`, `cc+` or `cc-` |
+| `lat`, `lon` | Calculated strike position (`null` if no station position is set) |
+
+The list is written as `[]` when there have been no strikes in the window. Switch the list off with `realtime_json_strikes=false`.
+
+With many strikes the file gets larger: about 200 bytes per strike, so roughly 1 MB at the 5,000-strike limit. Lower `nscrop` if that is too much to fetch every 10 seconds.
 
 If no strike has been received since start-up, `last_strike_type` is `null`.
 

@@ -24,16 +24,17 @@ type Config struct {
 	DBFile     string `ini:"db_file"`
 
 	// NSD (NSDisplay) outputs
-	NSDFiles     bool   `ini:"nsd_files"`
-	NSCrop       int    `ini:"nscrop"`
-	Measure      string `ini:"measure"`
-	Persistence  int    `ini:"persistence"`
-	StormFix     bool   `ini:"stormfix"`
-	WriteEvery   int    `ini:"write_interval_sec"`
-	RealtimeJSON bool   `ini:"realtime_json"`
-	StationLat   string `ini:"station_lat"`
-	StationLon   string `ini:"station_lon"`
-	DistUnit     string `ini:"distance_unit"`
+	NSDFiles            bool   `ini:"nsd_files"`
+	NSCrop              int    `ini:"nscrop"`
+	Measure             string `ini:"measure"`
+	Persistence         int    `ini:"persistence"`
+	StormFix            bool   `ini:"stormfix"`
+	WriteEvery          int    `ini:"write_interval_sec"`
+	RealtimeJSON        bool   `ini:"realtime_json"`
+	RealtimeJSONStrikes bool   `ini:"realtime_json_strikes"`
+	StationLat          string `ini:"station_lat"`
+	StationLon          string `ini:"station_lon"`
+	DistUnit            string `ini:"distance_unit"`
 
 	lat, lon float64
 	hasPos   bool
@@ -77,31 +78,32 @@ type Config struct {
 
 func defaultConfig(base string) *Config {
 	return &Config{
-		BaseDir:         base,
-		DataDir:         "data",
-		ReportsDir:      "reports",
-		CSVDir:          "csv",
-		LogDir:          "logs",
-		DBFile:          `data\NSD.sqlite`,
-		NSDFiles:        true,
-		NSCrop:          2000,
-		Measure:         "km",
-		Persistence:     60,
-		WriteEvery:      10,
-		RealtimeJSON:    true,
-		DistUnit:        "km",
-		CSVExtended:     true,
-		CSVNSList:       true,
-		StrikeMem:       "NXFGIPC_SHMEM_0822931589443_238731_GATE0",
-		StormMem:        "NXFGIPC_SHMEM_5216659004766_091723_GATE0",
-		PollMs:          1,
-		HeartbeatWarnMn: 5,
-		FTPRename:       true,
-		HTTPListen:      "127.0.0.1:8090",
-		NXUtil:          "nxutil.exe",
-		ExportDir:       "exports",
-		ExportTimout:    300,
-		LogMaxMB:        5,
+		BaseDir:             base,
+		DataDir:             "data",
+		ReportsDir:          "reports",
+		CSVDir:              "csv",
+		LogDir:              "logs",
+		DBFile:              `data\NSD.sqlite`,
+		NSDFiles:            true,
+		NSCrop:              2000,
+		Measure:             "km",
+		Persistence:         60,
+		WriteEvery:          10,
+		RealtimeJSON:        true,
+		RealtimeJSONStrikes: true,
+		DistUnit:            "km",
+		CSVExtended:         true,
+		CSVNSList:           true,
+		StrikeMem:           "NXFGIPC_SHMEM_0822931589443_238731_GATE0",
+		StormMem:            "NXFGIPC_SHMEM_5216659004766_091723_GATE0",
+		PollMs:              1,
+		HeartbeatWarnMn:     5,
+		FTPRename:           true,
+		HTTPListen:          "127.0.0.1:8090",
+		NXUtil:              "nxutil.exe",
+		ExportDir:           "exports",
+		ExportTimout:        300,
+		LogMaxMB:            5,
 	}
 }
 
@@ -190,6 +192,7 @@ func (c *Config) apply(m map[string]string) []string {
 	boo("stormfix", &c.StormFix)
 	num("write_interval_sec", &c.WriteEvery)
 	boo("realtime_json", &c.RealtimeJSON)
+	boo("realtime_json_strikes", &c.RealtimeJSONStrikes)
 	str("station_lat", &c.StationLat)
 	str("station_lon", &c.StationLon)
 	str("distance_unit", &c.DistUnit)
@@ -336,6 +339,8 @@ func (c *Config) render() string {
 	w("write_interval_sec=%d", c.WriteEvery)
 	w("; also write NSDRealtime.json (same data as NSDRealtime.txt, with named fields)")
 	w("realtime_json=%s", b2s(c.RealtimeJSON))
+	w("; include the strikes from the last 'persistence' minutes (up to nscrop) in the JSON")
+	w("realtime_json_strikes=%s", b2s(c.RealtimeJSONStrikes))
 	w("; your detector's position in decimal degrees (north and east positive), used to")
 	w("; work out each strike's latitude/longitude. Leave blank to switch this off.")
 	w("station_lat=%s", c.StationLat)

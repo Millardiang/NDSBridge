@@ -3,6 +3,17 @@
 All notable changes to NSD Bridge are listed here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions use [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-11-02
+
+### Added
+- A `strikes` list in `NSDRealtime.json` with every strike from the last `persistence` minutes (at most `nscrop`, newest first). This is the same set of strikes as `NSDStrikes.txt`. Each entry has the time, whole-degree direction, exact bearing, distance, type and calculated `lat`/`lon`.
+- `station`, `strikes_window_min` and `strikes_count` in `NSDRealtime.json`.
+- `realtime_json_strikes` setting (default `true`) to switch the list on or off.
+- The database now stores each strike's exact bearing and position (new `bearing`, `lat` and `lon` columns in the `strikes` table), so coordinates are kept across restarts. The columns are added automatically to existing databases.
+
+### Notes
+- Strikes recorded by NSBackend, before the upgrade, have no stored position. If a station position is set, their coordinates are worked out from the whole-degree direction instead.
+
 ## [1.1.0] - 2026-11-02
 
 ### Added
@@ -61,6 +72,7 @@ First release. Replaces NSBackend 2.12 and NSList 1.4.
 - Days with no strikes being reported as failed exports by nxutil.
 - Monthly totals in the report for a finished month: they are now worked out from that month's daily rows.
 
+[1.2.0]: #120---2026-11-02
 [1.1.0]: #110---2026-11-02
 [1.0.1]: #101---2026-10-28
 [1.0.0]: #100---2026-10-28

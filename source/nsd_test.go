@@ -301,7 +301,7 @@ func TestRollover(t *testing.T) {
 func TestRealtimeJSON(t *testing.T) {
 	b := fmtRealtimeJSON(&Realtime{Now: 1793175378, LastStrike: 1793174710, LastDir: "10", LastDist: "653", LastType: "cc-",
 		LastHour: 2, Day: 38, Month: 18560, Year: 169820, MaxRate: 3, MaxRateTime: "02:10", MaxBurst: 2, MaxBurstTime: "04:02",
-		CGP: 4, CGN: 7, CCP: 18, CCN: 9, Uptime: "5 days 13 hours 36 min", Measure: "km", Persistence: 60, Crop: 5000})
+		CGP: 4, CGN: 7, CCP: 18, CCN: 9, Uptime: "5 days 13 hours 36 min", Measure: "km", Persistence: 60, Crop: 5000}, nil, nil)
 	var m map[string]any
 	if err := json.Unmarshal(b, &m); err != nil {
 		t.Fatal(err)
@@ -330,10 +330,77 @@ func TestDestination(t *testing.T) {
 	if trueBearing(3555, 10) != 5.5 || trueBearing(1805, 0) != 180.5 {
 		t.Fatal("trueBearing")
 	}
-	b := fmtRealtimeJSON(&Realtime{LastStrike: 1, LastType: "cg-", LastDir: "180", LastDist: "10", LastPos: &[2]float64{51.4175, -0.1278}})
+	b := fmtRealtimeJSON(&Realtime{LastStrike: 1, LastType: "cg-", LastDir: "180", LastDist: "10", LastPos: &[2]float64{51.4175, -0.1278}}, nil, nil)
 	var m map[string]any
 	json.Unmarshal(b, &m)
 	if m["last_strike_lat"] != 51.4175 || m["last_strike_lon"] != -0.1278 {
 		t.Fatalf("%s", b)
 	}
+}
+
+func TestRealtimeJSONStrikes(t *testing.T) {
+	cfg := defaultConfig(t.TempDir())
+	cfg.StationLat, cfg.StationLon = "51.4545", "-2.5879"
+	cfg.validate()
+	b1 := 216.4
+	la, lo := 49.3726, -4.9347
+	rows := []StrikeRow{
+		{TS: 1793612215, Dir: 216, Dist: 285, Type: "cc+", Bearing: &b1, Lat: &la, Lon: &lo},
+		{TS: 1793612100, Dir: 90, Dist: 100, Type: "cg-"}, // old NSBackend row: no bearing/lat/lon
+	}
+	b := fmtRealtimeJSON(&Realtime{Now: 1793612216, Persistence: 60}, rows, cfg)
+	var m struct {
+		Window  int            `json:"strikes_window_min"`
+		Count   int            `json:"strikes_count"`
+		Station map[string]any `json:"station"`
+		Strikes []JSONStrike   `json:"strikes"`
+	}
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m.Window != 60 || m.Count != 2 || len(m.Strikes) != 2 || m.Station["lat"] != 51.4545 {
+		t.Fatalf("%s", b)
+	}
+	if *m.Strikes[0].Lat != 49.3726 || *m.Strikes[0].Bearing != 216.4 || m.Strikes[0].TimeUTC != "2026-11-02T09:36:55Z" {
+		t.Fatalf("%+v", m.Strikes[0])
+	}
+	if m.Strikes[1].Lat == nil || *m.Strikes[1].Bearing != 90 || math.Abs(*m.Strikes[1].Lat-51.4545) > 0.01 {
+		t.Fatalf("fallback %+v", m.Strikes[1])
+	}
+	// empty list is [] not missing
+	b = fmtRealtimeJSON(&Realtime{Persistence: 60}, nil, cfg)
+	if !strings.Contains(string(b), `"strikes": []`) {
+		t.Fatalf("%s", b)
+	}
+	// switched off
+	cfg.RealtimeJSONStrikes = false
+	if strings.Contains(string(fmtRealtimeJSON(&Realtime{}, rows, cfg)), "strikes_window_min") {
+		t.Fatal("list should be omitted")
+	}
+}
+
+func TestStoreMigratesStrikeColumns(t *testing.T) {
+	b, err := os.ReadFile("/home/claude/src/nsd/NSD/Backend/data/NSD.sqlite")
+	if err != nil {
+		t.Skip("sample data not present")
+	}
+	db := filepath.Join(t.TempDir(), "NSD.sqlite")
+	os.WriteFile(db, b, 0o644)
+	st, err := OpenStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	be, la, lo := 12.3, 50.0, -1.0
+	if err := st.InsertStrikes([]StrikeRow{{TS: 4000000000, Dir: 12, Dist: 10, Type: "cg+", Bearing: &be, Lat: &la, Lon: &lo}}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := st.RecentStrikes(0, 10)
+	if err != nil || len(rows) == 0 || rows[0].Lat == nil || *rows[0].Lat != 50 {
+		t.Fatalf("%v %+v", err, rows)
+	}
+	st.Close()
+	if st, err = OpenStore(db); err != nil { // reopening must not try to add the columns again
+		t.Fatal(err)
+	}
+	st.Close()
 }

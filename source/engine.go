@@ -196,7 +196,13 @@ func (e *Engine) handleStrike(r *StrikeRec) {
 		lat, lon := destination(e.cfg.lat, e.cfg.lon, trueBearing(r.BearingT(), e.align), km)
 		e.lastPos = &[2]float64{lat, lon}
 	}
-	e.pending = append(e.pending, StrikeRow{TS: ts, Dir: dir, Dist: r.Distance(), Corr: r.Corr(), Type: typ})
+	tb := trueBearing(r.BearingT(), e.align)
+	row := StrikeRow{TS: ts, Dir: dir, Dist: r.Distance(), Corr: r.Corr(), Type: typ, Bearing: &tb}
+	if e.lastPos != nil {
+		la, lo := e.lastPos[0], e.lastPos[1]
+		row.Lat, row.Lon = &la, &lo
+	}
+	e.pending = append(e.pending, row)
 	e.csv.Add(r, e.align)
 }
 
@@ -362,7 +368,7 @@ func (e *Engine) writeStrikeFiles(now time.Time, rate int) {
 	}
 	e.out("NSDRealtime.txt", fmtRealtime(rt))
 	if e.cfg.RealtimeJSON {
-		e.out("NSDRealtime.json", fmtRealtimeJSON(rt))
+		e.out("NSDRealtime.json", fmtRealtimeJSON(rt, rows, e.cfg))
 	}
 }
 
