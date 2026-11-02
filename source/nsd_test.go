@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"os/exec"
@@ -403,4 +404,42 @@ func TestStoreMigratesStrikeColumns(t *testing.T) {
 		t.Fatal(err)
 	}
 	st.Close()
+}
+
+// After a restart the last strike and the per-minute rate must come back.
+func TestRestartRestoresRecent(t *testing.T) {
+	dir := t.TempDir()
+	cfg := defaultConfig(dir)
+	cfg.StationLat, cfg.StationLon = "51.4545", "-2.5879"
+	cfg.validate()
+	st, err := OpenStore(filepath.Join(dir, "data", "NSD.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := NewEngine(cfg, st, NewDelivery(cfg), &ipcHealth{})
+	if err := e.Load(); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	for i := 0; i < 5; i++ {
+		r, _ := ParseStrike(fmt.Sprintf("%d,2026,11,2,36000,1925,265,0,0,0,0,0,0,0,1", 100+i))
+		r.Received = now.Add(time.Duration(i-5) * time.Second)
+		e.handleStrike(r)
+	}
+	e.everySecond(now) // saves strikes and (tick 1) nothing else
+	e.persist(now, false)
+	st.Close()
+
+	st2, _ := OpenStore(filepath.Join(dir, "data", "NSD.sqlite"))
+	defer st2.Close()
+	e2 := NewEngine(cfg, st2, NewDelivery(cfg), &ipcHealth{})
+	if err := e2.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if len(e2.recent) != 5 || e2.lastType != "cg-" || e2.lastDist != "265" || e2.lastDir != "192" || e2.lastPos == nil || e2.daily.Strikes != 5 {
+		t.Fatalf("recent=%d last=%s %s %s pos=%v daily=%v", len(e2.recent), e2.lastType, e2.lastDir, e2.lastDist, e2.lastPos, e2.daily)
+	}
+	if math.Abs(e2.lastPos[0]-e.lastPos[0]) > 1e-9 {
+		t.Fatalf("position changed %v %v", e.lastPos, e2.lastPos)
+	}
 }

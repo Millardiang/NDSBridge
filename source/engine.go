@@ -92,8 +92,37 @@ func (e *Engine) Load() error {
 		e.day = *d
 	}
 	e.day.Date = today
+	e.restoreRecent(now)
 	logf("loaded counters: today %d strikes, month %d, year %d", e.daily.Strikes, e.monthly.Strikes, e.yearly.Strikes)
 	return nil
+}
+
+// restoreRecent reloads the last strike and the last minute's strikes from
+// the database, so the rate and "last strike" values carry on after a
+// restart instead of starting from zero.
+func (e *Engine) restoreRecent(now time.Time) {
+	rows, err := e.store.RecentStrikes(now.Unix()-60, 1000000)
+	if err != nil {
+		warnf("restoring recent strikes: %v", err)
+		return
+	}
+	for i := len(rows) - 1; i >= 0; i-- { // oldest first
+		e.recent = append(e.recent, recentStrike{time.Unix(rows[i].TS, 0), rows[i].Dist})
+	}
+	last, err := e.store.RecentStrikes(0, 1)
+	if err != nil || len(last) == 0 {
+		return
+	}
+	l := last[0]
+	e.lastTS, e.lastDir, e.lastDist, e.lastType = l.TS, itoa(l.Dir), itoa(l.Dist), l.Type
+	if l.Lat != nil && l.Lon != nil {
+		e.lastPos = &[2]float64{*l.Lat, *l.Lon}
+	} else if e.cfg.hasPos {
+		if js := strikeList([]StrikeRow{l}, e.cfg); len(js) == 1 && js[0].Lat != nil {
+			e.lastPos = &[2]float64{*js[0].Lat, *js[0].Lon}
+		}
+	}
+	logf("restored last strike (%s) and %d strikes from the last minute", time.Unix(l.TS, 0).Format("2006-01-02 15:04:05"), len(e.recent))
 }
 
 func (e *Engine) resetFor(prevDate, today string) {
@@ -294,8 +323,16 @@ func (e *Engine) everySecond(now time.Time) {
 	if changed := e.csv.Flush(); len(changed) > 0 {
 		e.deliv.Mirror(changed...)
 	}
+	// Strikes go to the database every second and counters every write
+	// interval, so a power cut or forced stop loses at most a few seconds.
+	e.safe("save strikes", e.flushStrikes)
 	if e.tick%e.cfg.WriteEvery == 0 {
-		e.safe("strikes", func() { e.flushStrikes(); e.writeStrikeFiles(now, rate) })
+		e.safe("strikes", func() {
+			e.writeStrikeFiles(now, rate)
+			if e.tick%60 != 0 {
+				e.persist(now, false)
+			}
+		})
 	}
 	if e.tick%20 == 0 {
 		e.safe("storms", func() { e.flushStorms(now) })

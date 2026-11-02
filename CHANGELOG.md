@@ -3,6 +3,12 @@
 All notable changes to NSD Bridge are listed here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions use [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-11-02
+
+### Fixed
+- After a restart, these values in `NSDRealtime.json` / `.txt` went back to 0 or `null` until the next strike: the strike rate, the close-strike rate, and the last-strike time, direction, distance, type and coordinates. They are now restored from the database at start-up. NSBackend had the same behaviour.
+- A forced stop (power cut, crash, Task Manager) could lose up to 60 seconds of counts. Strikes are now saved to the database every second and counters every 10 seconds (`write_interval_sec`).
+
 ## [1.2.0] - 2026-11-02
 
 ### Added
@@ -72,6 +78,7 @@ First release. Replaces NSBackend 2.12 and NSList 1.4.
 - Days with no strikes being reported as failed exports by nxutil.
 - Monthly totals in the report for a finished month: they are now worked out from that month's daily rows.
 
+[1.2.1]: #121---2026-11-02
 [1.2.0]: #120---2026-11-02
 [1.1.0]: #110---2026-11-02
 [1.0.1]: #101---2026-10-28

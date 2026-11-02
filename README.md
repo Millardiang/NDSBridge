@@ -1,4 +1,4 @@
-# NSD Bridge 1.2.0
+# NSD Bridge 1.2.1
 
 **NexStorm / Boltek lightning data logger for modern Windows**
 
@@ -57,6 +57,7 @@ NSD Bridge fixes all of these. It also keeps itself running:
 - **Error recovery:** every scheduled job recovers from errors on its own.
 - **Locked files:** if a CSV is open in Excel, new rows are held and written as soon as the file is closed.
 - **Database safety:** the database is checked at start-up and backed up every night.
+- **Restarts:** strikes are saved every second and counters every 10 seconds. After a restart, the strike rate and the last-strike details are restored, so nothing in `NSDRealtime` drops back to 0.
 
 ---
 
