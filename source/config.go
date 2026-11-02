@@ -31,6 +31,12 @@ type Config struct {
 	StormFix     bool   `ini:"stormfix"`
 	WriteEvery   int    `ini:"write_interval_sec"`
 	RealtimeJSON bool   `ini:"realtime_json"`
+	StationLat   string `ini:"station_lat"`
+	StationLon   string `ini:"station_lon"`
+	DistUnit     string `ini:"distance_unit"`
+
+	lat, lon float64
+	hasPos   bool
 
 	// CSV outputs
 	CSVExtended   bool `ini:"csv_extended"`
@@ -83,6 +89,7 @@ func defaultConfig(base string) *Config {
 		Persistence:     60,
 		WriteEvery:      10,
 		RealtimeJSON:    true,
+		DistUnit:        "km",
 		CSVExtended:     true,
 		CSVNSList:       true,
 		StrikeMem:       "NXFGIPC_SHMEM_0822931589443_238731_GATE0",
@@ -183,6 +190,9 @@ func (c *Config) apply(m map[string]string) []string {
 	boo("stormfix", &c.StormFix)
 	num("write_interval_sec", &c.WriteEvery)
 	boo("realtime_json", &c.RealtimeJSON)
+	str("station_lat", &c.StationLat)
+	str("station_lon", &c.StationLon)
+	str("distance_unit", &c.DistUnit)
 	boo("csv_extended", &c.CSVExtended)
 	boo("csv_nslist", &c.CSVNSList)
 	boo("csv_include_noise", &c.CSVNoise)
@@ -237,6 +247,21 @@ func (c *Config) validate() []string {
 	if c.FTPActive && c.FTPServer == "" {
 		p = append(p, "ftpactive is on but no server is set; FTP disabled")
 		c.FTPActive = false
+	}
+	c.DistUnit = strings.ToLower(strings.TrimSpace(c.DistUnit))
+	if c.DistUnit != "km" && c.DistUnit != "mi" {
+		p = append(p, "distance_unit must be km or mi (using km)")
+		c.DistUnit = "km"
+	}
+	c.hasPos = false
+	if strings.TrimSpace(c.StationLat) != "" || strings.TrimSpace(c.StationLon) != "" {
+		lat, err1 := strconv.ParseFloat(strings.TrimSpace(c.StationLat), 64)
+		lon, err2 := strconv.ParseFloat(strings.TrimSpace(c.StationLon), 64)
+		if err1 != nil || err2 != nil || lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+			p = append(p, "station_lat/station_lon must be decimal degrees, e.g. 51.5074 and -0.1278 (strike positions switched off)")
+		} else {
+			c.lat, c.lon, c.hasPos = lat, lon, true
+		}
 	}
 	if c.LogMaxMB < 1 {
 		c.LogMaxMB = 5
@@ -311,6 +336,12 @@ func (c *Config) render() string {
 	w("write_interval_sec=%d", c.WriteEvery)
 	w("; also write NSDRealtime.json (same data as NSDRealtime.txt, with named fields)")
 	w("realtime_json=%s", b2s(c.RealtimeJSON))
+	w("; your detector's position in decimal degrees (north and east positive), used to")
+	w("; work out each strike's latitude/longitude. Leave blank to switch this off.")
+	w("station_lat=%s", c.StationLat)
+	w("station_lon=%s", c.StationLon)
+	w("; units NexStorm reports distances in: km or mi")
+	w("distance_unit=%s", c.DistUnit)
 	w("")
 	w("[csv]")
 	w("; csv\\strikes_YYYY-MM-DD.csv : one row per strike, with header, UTC + local time, all fields")

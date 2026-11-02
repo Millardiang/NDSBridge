@@ -1,11 +1,11 @@
-# NSD Bridge 1.0.1
+# NSD Bridge 1.1.0
 
 **NexStorm / Boltek lightning data logger for modern Windows**
 
 NSD Bridge replaces the 2013 NSD backend (`NSBackend.exe` + `NSList.exe`) with a single program. It reads the live strike and storm data that NexStorm publishes, and writes:
 
 - **The same NSD files as before**, byte-for-byte compatible: `NSDRealtime.txt`, `NSDStrikes.txt`, `NSDStrikes20sec.txt`, `NSDStorms.txt`, `NSDOldStorms.txt`, `NSDGraph.txt`, `NSDRaw.txt` and `reports\NSDReportMMYYYY.txt`, plus the same `NSD.sqlite` database, so your year-to-date counters carry on.
-- **`NSDRealtime.json`**: the realtime data as JSON, with field names.
+- **`NSDRealtime.json`**: the realtime data as JSON, with field names and the latitude/longitude of the last strike.
 - **The NSList daily CSV** (`csv\LYYYYMMDD.csv`), the same file NSList's "Log CSV file" option produced.
 - **A fuller daily CSV** with a header row (`csv\strikes_YYYY-MM-DD.csv`).
 - **CSV exports of NexStorm's archive files** (`exports\nex_YYYY-MM-DD.csv`), made with `nxutil.exe` or a built-in reader.
@@ -124,6 +124,8 @@ Settings are in `nsdbridge.ini` next to the program. It is created on first run,
 | `data_dir`, `reports_dir`, `csv_dir`, `log_dir` | `data`, `reports`, `csv`, `logs` | Output folders, relative to the program folder |
 | `nsd_files` | `true` | Write the NSD text files |
 | `realtime_json` | `true` | Also write `NSDRealtime.json` |
+| `station_lat`, `station_lon` | *(empty)* | Your detector's position in decimal degrees (north and east positive, e.g. `51.4545` and `-2.5879`). Needed for strike coordinates. |
+| `distance_unit` | `km` | `km` or `mi`: the units NexStorm reports distances in. Used only to work out strike coordinates. |
 | `nscrop` | `2000` | Maximum strikes in `NSDStrikes.txt` |
 | `persistence` | `60` | Minutes of strikes kept in `NSDStrikes.txt` |
 | `measure` | `km` | `km` or `mi`. This is a label only; distances stay in NexStorm's units, as before. |
@@ -161,7 +163,8 @@ This file holds the same values as `NSDRealtime.txt`, in the same order. The dif
 
 - each value has a name;
 - numbers are real JSON numbers, not text;
-- two UTC times are added: `time_utc` and `last_strike_time_utc`.
+- two UTC times are added: `time_utc` and `last_strike_time_utc`;
+- the last strike's position is added: `last_strike_lat` and `last_strike_lon`.
 
 Switch it off with `realtime_json=false`.
 
@@ -177,6 +180,8 @@ Switch it off with `realtime_json=false`.
   "last_strike_direction": 183,
   "last_strike_distance": 261,
   "last_strike_type": "cc+",
+  "last_strike_lat": 49.3726,
+  "last_strike_lon": -4.9347,
   "strikes_last_hour": 64,
   "strikes_today": 102,
   "strikes_month": 18624,
@@ -197,6 +202,19 @@ Switch it off with `realtime_json=false`.
 ```
 
 If no strike has been received since start-up, `last_strike_type` is `null`.
+
+#### Strike coordinates
+
+NexStorm only reports a strike's bearing and distance from your detector. NSD Bridge turns these into a latitude and longitude:
+
+- It starts from your station's position (`station_lat` / `station_lon`).
+- It uses the bearing at NexStorm's full 0.1° resolution, with the TRAC alignment applied.
+- It converts the distance from `distance_unit` to km, then works out the point that far away along the Earth's surface.
+- Values are rounded to 4 decimal places (about 10 m).
+
+`last_strike_lat` and `last_strike_lon` are `null` if the station position is not set, or no strike has been received since start-up.
+
+> **Accuracy:** a single Boltek detector estimates distance from signal strength, so positions are approximate. They can be off by tens of kilometres, especially for distant strikes. Bearings are usually much better than distances.
 
 ### `reports\`
 

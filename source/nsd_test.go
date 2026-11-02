@@ -307,8 +307,33 @@ func TestRealtimeJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	if m["last_strike_distance"].(float64) != 653 || m["last_strike_direction"].(float64) != 10 || m["strikes_year"].(float64) != 169820 ||
-		m["time_utc"] != "2026-10-28T08:16:18Z" || m["last_strike_type"] != "cc-" || len(m) != 26 {
+		m["time_utc"] != "2026-10-28T08:16:18Z" || m["last_strike_type"] != "cc-" || len(m) != 28 || m["last_strike_lat"] != nil {
 		t.Fatalf("%s", b)
 	}
 	t.Logf("%s", b)
+}
+
+func TestDestination(t *testing.T) {
+	// 100 km due north of the equator/Greenwich: 0.8993 deg north
+	if la, lo := destination(0, 0, 0, 100); la != 0.8993 || lo != 0 {
+		t.Fatalf("%v %v", la, lo)
+	}
+	// London -> 343.6 km at bearing 148.1 lands near Paris (48.8566, 2.3522)
+	la, lo := destination(51.5074, -0.1278, 148.1, 343.6)
+	if math.Abs(la-48.8566) > 0.05 || math.Abs(lo-2.3522) > 0.05 {
+		t.Fatalf("London->Paris gave %v %v", la, lo)
+	}
+	// crossing the date line wraps
+	if _, lo := destination(0, 179.9, 90, 50); lo > -179 || lo < -180 {
+		t.Fatalf("wrap %v", lo)
+	}
+	if trueBearing(3555, 10) != 5.5 || trueBearing(1805, 0) != 180.5 {
+		t.Fatal("trueBearing")
+	}
+	b := fmtRealtimeJSON(&Realtime{LastStrike: 1, LastType: "cg-", LastDir: "180", LastDist: "10", LastPos: &[2]float64{51.4175, -0.1278}})
+	var m map[string]any
+	json.Unmarshal(b, &m)
+	if m["last_strike_lat"] != 51.4175 || m["last_strike_lon"] != -0.1278 {
+		t.Fatalf("%s", b)
+	}
 }

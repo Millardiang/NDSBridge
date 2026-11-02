@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -206,4 +207,28 @@ func alignedBearing(bearingTenths, align int) int {
 		d += 360
 	}
 	return d
+}
+
+// trueBearing is the strike bearing in degrees from north, with the TRAC
+// alignment applied, at NexStorm's full 0.1 degree resolution.
+func trueBearing(bearingTenths, align int) float64 {
+	b := math.Mod(float64(bearingTenths)/10+float64(align), 360)
+	if b < 0 {
+		b += 360
+	}
+	return b
+}
+
+// destination returns the point distKm away from (lat, lon) on the given
+// bearing, on a spherical Earth (radius 6371 km). Result rounded to 4 dp
+// (about 10 m), far finer than a single detector's distance estimate.
+func destination(lat, lon, bearingDeg, distKm float64) (float64, float64) {
+	const r = 6371.0
+	rad := math.Pi / 180
+	φ1, λ1, θ, δ := lat*rad, lon*rad, bearingDeg*rad, distKm/r
+	φ2 := math.Asin(math.Sin(φ1)*math.Cos(δ) + math.Cos(φ1)*math.Sin(δ)*math.Cos(θ))
+	λ2 := λ1 + math.Atan2(math.Sin(θ)*math.Sin(δ)*math.Cos(φ1), math.Cos(δ)-math.Sin(φ1)*math.Sin(φ2))
+	lon2 := math.Mod(λ2/rad+540, 360) - 180
+	round := func(v float64) float64 { return math.Round(v*1e4) / 1e4 }
+	return round(φ2 / rad), round(lon2)
 }

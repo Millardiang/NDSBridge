@@ -3,6 +3,16 @@
 All notable changes to NSD Bridge are listed here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions use [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-11-02
+
+### Added
+- `last_strike_lat` and `last_strike_lon` in `NSDRealtime.json`: the calculated position of the last strike. It is worked out from the station position, the bearing (at full 0.1° resolution, with the TRAC alignment applied) and the distance. Both values are `null` until a station position is set.
+- `station_lat` and `station_lon` settings for the detector's position, in decimal degrees.
+- `distance_unit` setting (`km` or `mi`) for the units NexStorm reports distances in.
+
+### Unchanged
+- `NSDRealtime.txt` and all other NSD files keep their exact NSBackend format.
+
 ## [1.0.1] - 2026-10-28
 
 ### Added
@@ -51,5 +61,6 @@ First release. Replaces NSBackend 2.12 and NSList 1.4.
 - Days with no strikes being reported as failed exports by nxutil.
 - Monthly totals in the report for a finished month: they are now worked out from that month's daily rows.
 
+[1.1.0]: #110---2026-11-02
 [1.0.1]: #101---2026-10-28
 [1.0.0]: #100---2026-10-28

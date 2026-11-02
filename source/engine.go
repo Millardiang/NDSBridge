@@ -37,6 +37,7 @@ type Engine struct {
 
 	lastTS            int64
 	lastDir, lastDist string
+	lastPos           *[2]float64 // lat, lon of the last strike (nil if unknown)
 	lastType          string
 
 	tick int
@@ -186,6 +187,15 @@ func (e *Engine) handleStrike(r *StrikeRec) {
 	}
 	e.recent = append(e.recent, recentStrike{r.Received, r.Distance()})
 	e.lastTS, e.lastDir, e.lastDist, e.lastType = ts, itoa(dir), itoa(r.Distance()), typ
+	e.lastPos = nil
+	if e.cfg.hasPos {
+		km := float64(r.Distance())
+		if e.cfg.DistUnit == "mi" {
+			km *= 1.609344
+		}
+		lat, lon := destination(e.cfg.lat, e.cfg.lon, trueBearing(r.BearingT(), e.align), km)
+		e.lastPos = &[2]float64{lat, lon}
+	}
 	e.pending = append(e.pending, StrikeRow{TS: ts, Dir: dir, Dist: r.Distance(), Corr: r.Corr(), Type: typ})
 	e.csv.Add(r, e.align)
 }
@@ -344,7 +354,7 @@ func (e *Engine) writeStrikeFiles(now time.Time, rate int) {
 	e.out("NSDStrikes20sec.txt", fmtStrikes(last20))
 	rt := &Realtime{
 		Now: nowU, Rate: rate, CloseRate: closeRate,
-		LastStrike: e.lastTS, LastDir: e.lastDir, LastDist: e.lastDist, LastType: e.lastType,
+		LastStrike: e.lastTS, LastDir: e.lastDir, LastDist: e.lastDist, LastType: e.lastType, LastPos: e.lastPos,
 		LastHour: len(rows), Day: e.daily.Strikes, Month: e.monthly.Strikes, Year: e.yearly.Strikes,
 		MaxRate: e.day.MaxRate, MaxRateTime: e.day.MaxRateTime, MaxBurst: e.day.MaxBurst, MaxBurstTime: e.day.MaxBurstTime,
 		CGP: e.day.CGP, CGN: e.day.CGN, CCP: e.day.CCP, CCN: e.day.CCN,

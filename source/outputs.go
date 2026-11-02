@@ -50,6 +50,7 @@ type Realtime struct {
 	LastStrike                 int64
 	LastDir, LastDist          string
 	LastType                   string
+	LastPos                    *[2]float64
 	LastHour, Day, Month, Year int
 	MaxRate                    int
 	MaxRateTime                string
@@ -129,6 +130,10 @@ func fmtRealtimeJSON(r *Realtime) []byte {
 		}
 		return nil
 	}
+	var lat, lon any
+	if r.LastPos != nil {
+		lat, lon = r.LastPos[0], r.LastPos[1]
+	}
 	lastType := any(r.LastType)
 	if r.LastType == "" || r.LastType == "-" {
 		lastType = nil
@@ -144,6 +149,8 @@ func fmtRealtimeJSON(r *Realtime) []byte {
 		LastDir      any    `json:"last_strike_direction"`
 		LastDist     any    `json:"last_strike_distance"`
 		LastType     any    `json:"last_strike_type"`
+		LastLat      any    `json:"last_strike_lat"`
+		LastLon      any    `json:"last_strike_lon"`
 		LastHour     int    `json:"strikes_last_hour"`
 		Day          int    `json:"strikes_today"`
 		Month        int    `json:"strikes_month"`
@@ -160,7 +167,7 @@ func fmtRealtimeJSON(r *Realtime) []byte {
 		Measure      string `json:"measure"`
 		Persistence  int    `json:"persistence_min"`
 		Crop         int    `json:"max_strikes_in_file"`
-	}{r.Now, iso(r.Now), r.Rate, r.CloseRate, 50, r.LastStrike, iso(r.LastStrike), num(r.LastDir), num(r.LastDist), lastType,
+	}{r.Now, iso(r.Now), r.Rate, r.CloseRate, 50, r.LastStrike, iso(r.LastStrike), num(r.LastDir), num(r.LastDist), lastType, lat, lon,
 		r.LastHour, r.Day, r.Month, r.Year, r.MaxRate, r.MaxRateTime, r.MaxBurst, r.MaxBurstTime,
 		r.CGP, r.CGN, r.CCP, r.CCN, r.Uptime, r.Measure, r.Persistence, r.Crop}
 	b, _ := json.MarshalIndent(m, "", "  ")
