@@ -92,6 +92,9 @@ func (e *Engine) Load() error {
 		e.day = *d
 	}
 	e.day.Date = today
+	if e.cfg.RealtimeJSON && e.cfg.RealtimeJSONStrikes && e.cfg.jsonWindowMin == 0 {
+		e.backfillToday(now)
+	}
 	e.restoreRecent(now)
 	logf("loaded counters: today %d strikes, month %d, year %d", e.daily.Strikes, e.monthly.Strikes, e.yearly.Strikes)
 	return nil

@@ -478,3 +478,22 @@ func (s *Store) Backup(dir string, keep int) error {
 func itoa(n int) string        { return strconv.Itoa(n) }
 func i64(n int64) string       { return strconv.FormatInt(n, 10) }
 func joinc(a ...string) string { return strings.Join(a, ",") }
+
+// StrikeKeys returns how many stored strikes there are for each
+// (timestamp, direction, distance) since a time - used to avoid duplicates.
+func (s *Store) StrikeKeys(since int64) (map[[3]int64]int, error) {
+	rows, err := s.db.Query("SELECT timestamp, dir, dist FROM strikes WHERE timestamp >= ?", since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := map[[3]int64]int{}
+	for rows.Next() {
+		var a, b, c sql.NullInt64
+		if err := rows.Scan(&a, &b, &c); err != nil {
+			return nil, err
+		}
+		m[[3]int64{a.Int64, b.Int64, c.Int64}]++
+	}
+	return m, rows.Err()
+}

@@ -1,4 +1,4 @@
-# NSD Bridge 1.3.0
+# NSD Bridge 1.3.1
 
 **NexStorm / Boltek lightning data logger for modern Windows**
 
@@ -226,7 +226,7 @@ Each entry in `strikes` has these fields:
 | `type` | `cg+`, `cg-`, `cc+` or `cc-` |
 | `lat`, `lon` | Calculated strike position (`null` if no station position is set) |
 
-The list starts empty (`[]`) at midnight and grows through the day. Because today's strikes are kept in the database, the list survives restarts. `strikes_last_hour` and `NSDStrikes.txt` still cover the last `persistence` minutes, as NSDisplay expects.
+The list starts empty (`[]`) at midnight and grows through the day. Today's strikes are kept in the database, so the list survives restarts. At start-up, any of today's strikes missing from the database are restored from `csv\strikes_YYYY-MM-DD.csv`, without duplicates. Strikes recorded before NSD Bridge was installed (by NSBackend) cannot be restored this way. `strikes_last_hour` and `NSDStrikes.txt` still cover the last `persistence` minutes, as NSDisplay expects.
 
 To list only the last N minutes instead, set `realtime_json_window=N`. Switch the list off with `realtime_json_strikes=false`.
 

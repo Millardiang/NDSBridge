@@ -497,3 +497,49 @@ func TestJSONTodayWindow(t *testing.T) {
 		t.Fatal("minutes window")
 	}
 }
+
+// Strikes missing from the database (e.g. deleted by an older version) are
+// restored from today's CSV once, with no duplicates.
+func TestBackfillFromCSV(t *testing.T) {
+	dir := t.TempDir()
+	cfg := defaultConfig(dir)
+	cfg.StationLat, cfg.StationLon = "51.4545", "-2.5879"
+	cfg.validate()
+	now := time.Now()
+	y, mo, d := now.Date()
+	mid := time.Date(y, mo, d, 0, 0, 0, 0, time.Local)
+	if now.Sub(mid) < 10*time.Second {
+		t.Skip("too close to midnight")
+	}
+	c := newCSVLog(cfg)
+	var times []time.Time
+	for i := 0; i < 4; i++ {
+		r, _ := ParseStrike(fmt.Sprintf("%d,2026,11,2,100,%d,%d,5,0,0,0,7,0,0,1", 10+i, 1805+i*10, 100+i))
+		r.Received = mid.Add(time.Duration(i+1) * time.Second) // just after midnight
+		times = append(times, r.Received)
+		c.Add(r, 5)
+	}
+	c.Flush()
+	st, err := OpenStore(filepath.Join(dir, "data", "NSD.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	// one of the four is already in the database
+	b := 186.5
+	st.InsertStrikes([]StrikeRow{{TS: times[0].Unix(), Dir: 185, Dist: 100, Type: "cg-", Bearing: &b}})
+	for round := 0; round < 2; round++ {
+		e := NewEngine(cfg, st, NewDelivery(cfg), &ipcHealth{})
+		if err := e.Load(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, _ := st.RecentStrikes(mid.Unix()-1, 100)
+	if len(rows) != 4 {
+		t.Fatalf("want 4 strikes after backfill, got %d", len(rows))
+	}
+	r := rows[0] // newest: bearing 180.5+3.0 = 183.5 deg + alignment 5
+	if r.Dir != 188 || r.Dist != 103 || r.Type != "cg-" || r.Corr != 7 || r.Bearing == nil || *r.Bearing != 188.5 || r.Lat == nil {
+		t.Fatalf("%+v bearing=%v", r, *r.Bearing)
+	}
+}

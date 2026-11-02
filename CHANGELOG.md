@@ -3,6 +3,11 @@
 All notable changes to NSD Bridge are listed here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions use [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] - 2026-11-02
+
+### Fixed
+- The JSON strike list could show only the strikes since the last restart instead of the whole day, while `strikes_today` showed the full count. This happened because versions before 1.3.0 removed strikes from the database after about an hour. At start-up, any of today's strikes missing from the database are now restored from `csv\strikes_YYYY-MM-DD.csv`. Strikes already stored are not added twice, and the restored strikes keep their exact bearing and coordinates.
+
 ## [1.3.0] - 2026-11-02
 
 ### Changed
@@ -93,6 +98,7 @@ First release. Replaces NSBackend 2.12 and NSList 1.4.
 - Days with no strikes being reported as failed exports by nxutil.
 - Monthly totals in the report for a finished month: they are now worked out from that month's daily rows.
 
+[1.3.1]: #131---2026-11-02
 [1.3.0]: #130---2026-11-02
 [1.2.1]: #121---2026-11-02
 [1.2.0]: #120---2026-11-02
